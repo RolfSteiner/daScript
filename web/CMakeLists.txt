@@ -47,6 +47,8 @@ endif()
 # -sMEMORY64=1; every link (this file's, dasLLVM link_wasm, daspkg release wasm)
 # passes -sMEMORY64=2: 8-byte pointers over a 32-bit memory, so engines without
 # memory64 (WebKit) run it.
+add_compile_options(-sMEMORY64=0)
+add_link_options(-sMEMORY64=0)
 option(DAS_WASM_MEMORY64 "Build wasm output for memory64 (8-byte pointers)" OFF)
 if(DAS_WASM_MEMORY64)
     add_compile_options(-sMEMORY64=1)
