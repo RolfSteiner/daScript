@@ -72,6 +72,9 @@
 #include <stdarg.h>
 #endif
 
+#include <stdarg.h>
+#include <stdlib.h>
+
 #ifdef _MSC_VER
     #define DAS_NON_POD_PADDING 1
 #else

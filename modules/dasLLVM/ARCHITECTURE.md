@@ -112,7 +112,7 @@ through a failing gate), `--tune` (forced re-mint), `--tune-only` / `DAS_TUNE_ON
 only the named families; the policy guard arms it itself for a profile's residue),
 `DAS_TUNE_CONTROL` (a supervisor's stop request - tuners abort between families), `DAS_JIT_MANIFEST` (a run records every cached DLL it loads or writes in that directory; `ARCHITECTURE_CODEGEN_IDENTITY.md#jit-cache-sweep`), `--jit-obj-cache=0` (forces every split
 partition to re-emit, bypassing the obj cache), `--jit-lto` (a host-target `-exe` links
-with LTO; off by default), `DAS_JIT_PROBE_LTO` (the DLL path's twin: split partitions emit
+with LTO; off by default), `--jit-emit-object` / `--jit-runtime-lib` / `--jit-linker-string` on a wasm `-lib` (stop at the object, name the runtime archive, append to the emcc link; `ARCHITECTURE_LIB.md#lib-wasm-module`), `DAS_JIT_PROBE_LTO` (the DLL path's twin: split partitions emit
 bitcode and the link runs lld LTO - a dev probe artifact), `DAS_JIT_X64_FORCE_FEATURES` /
 `DAS_JIT_ARM64_FORCE_FEATURES` (force CPU features past detection - emission, the cache keys,
 and `cpu_supports`-based tune eligibility all follow), `--jit-target=<triple>` (a cross compile; under a triple a CPU class serves - wasm64, or any triple built under a baseline - the tune framework builds for that class: the sidecar beside the app does not stamp, a tune or test build keeps the rows the class can run, and a release ships no `llvm` module; `ARCHITECTURE_CPU_CLASSES.md#cross-class`), `DAS_JIT_BASELINE` (build for a CPU class

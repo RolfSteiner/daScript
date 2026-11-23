@@ -36,15 +36,16 @@ def public lib_link_note(target : JitTarget; kind : JitArtifact; link_whole_lib 
             let generic = ("Link this {get_target_triple()} object with libDaScript_runtime " +
                 "built for the same target\nwith the same C++ standard library.")
             return generic if (!target_wasm(target))
-            let threads = target.wasm_threads ? " -pthread" : ""
             let whole = (link_whole_lib
                 ? ("\nThis library registers a module that lives in the compiler library, " +
                     "and the wasm runtime\narchive does not carry the compiler library.")
                 : "")
-            return ("{generic}\nFor wasm that runtime is the wasm64 archive " +
+            return ("The build links <this>.mjs and <this>.wasm beside this header - an ES module " +
+                "exporting every\nentry point above, malloc and free - unless it ran with " +
+                "--jit-emit-object.\n" +
+                "{generic}\nFor wasm that runtime is the wasm64 archive " +
                 "<das_root>/web/output64/lib/liblibDaScript_runtime.a:\n" +
-                "  emcc <sources> <this>.o <runtime> -fwasm-exceptions " +
-                "-sWASM_LEGACY_EXCEPTIONS=0 -msimd128 -sMEMORY64=2{threads}\n" +
+                "  emcc <sources> <this>.o <runtime> {wasm_lib_abi_flags(target)}\n" +
                 "A JavaScript caller also lists the entry points it calls in " +
                 "-sEXPORTED_FUNCTIONS.{whole}")
         }

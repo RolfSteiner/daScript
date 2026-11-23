@@ -59,10 +59,11 @@ and redistributable by default, host-specific only when the build carries `[llvm
 whose tuner-generated IR a generic target refuses to legalize.
 
 A library for a cross triple (`--jit-target`) is the one exception: `write_cross_lib` writes a
-single object for that triple, `<out>.o`, and links nothing. The consumer's link - emcc for wasm,
-the target's clang (the Android NDK's, say) otherwise - brings the runtime archive built for that
-target anyway, and a host archiver need not index a foreign object, so an archive would add a tool
-dependency and no content. The object's target machine carries the features the intrinsic tables
+single object for that triple, `<out>.o`, never an archive, and for every triple but wasm links
+nothing (a wasm library goes on to an ES module, `#lib-wasm-module`). The consumer's link - emcc
+for wasm, the target's clang (the Android NDK's, say) otherwise - brings the runtime archive built
+for that target anyway, and a host archiver need not index a foreign object, so an archive would
+add a tool dependency and no content. The object's target machine carries the features the intrinsic tables
 were gated on: the wasm runtime archive's set, or the arch's forced features. Only 64-bit triples
 are accepted (wasm64, aarch64, x86_64): the host bakes its 8-byte pointer layouts into the object,
 and a 32-bit runtime would read them as 4. `--jit-static` and `--jit-lib-bindings` have no meaning
@@ -79,3 +80,25 @@ content-addressed, so a tier change there has no cache guard to catch it. At lev
 injected tune-policy default becomes `fallback` (`jit_cli_opt_level()` in `llvm_tune.das`):
 tune winners are raced under O3 codegen, so an O0 run cannot represent them and must not block
 on the tuner to mint them.
+
+## A wasm library goes on from its object to an ES module {#lib-wasm-module}
+
+For a wasm triple `write_cross_lib` (`llvm_jit_common.das`) does not stop at the object:
+`link_wasm_lib` runs emcc over it and the wasm64 runtime archive and leaves `<out>.mjs` and
+`<out>.wasm`: an ES module factory (`-sMODULARIZE -sEXPORT_ES6`) with no `main`
+(`--no-entry`). A wasm linker drops every function nothing reaches, and nothing in a library
+reaches its own entry points, so the link names each of them in `-sEXPORTED_FUNCTIONS` - the four
+fixed ones and the program's exports, from `lib_entry_point_names` (`llvm_exe.das`) - beside
+`malloc` and `free`, which a JavaScript caller needs to hand a string or a structure across. The
+module keeps its 8-byte pointers over a memory lowered to 32 bits, so a pointer crosses an entry
+point as a BigInt. `-sDEFAULT_TO_CXX=1` keeps the C++ standard library in the link when the driver
+is `emcc`, which newer Emscripten releases link as C. The link runs through the shell, as
+`link_wasm` runs its own, so `emcc` resolves to `emcc.bat` or `emcc.exe` alike on Windows.
+
+`wasm_lib_abi_flags` is the one spelling of the flags the object and the runtime archive must
+share; the link passes them and the header's link note (`lib_link_note`) prints them, for a host
+that links the object into a program of its own. Three knobs steer the link: `--jit-emit-object`
+stops at the object and the header, `--jit-runtime-lib` names the archive, and
+`--jit-linker-string` is appended last, where an emcc `-s` setting overrides the one the link
+passes. A build that asked for the module and has no runtime archive, or whose emcc fails, exits
+non-zero.

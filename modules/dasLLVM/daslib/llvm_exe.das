@@ -1614,6 +1614,13 @@ let private LIB_RUNTIME_INIT = "__das_lib_runtime_init"
 let private LIB_CTX_INIT = "__das_lib_ctx_init"
 var public g_lib_exports : array<CExport>
 
+//! every C symbol a library built under `prefix` defines for its host, the program's exports last
+def public lib_entry_point_names(prefix : string) : array<string> {
+    var names <- [for (fixed in ["create", "destroy", "last_error", "shutdown_runtime"]); "{prefix}_{fixed}"]
+    names |> push_from([for (e in g_lib_exports); e.c_name])
+    return <- names
+}
+
 
 def private emit_lib_globals(var types : PrimitiveTypes?) {
     var guard = LLVMAddGlobal(g_mod, types.t_int32, LIB_GUARD_GLOBAL)

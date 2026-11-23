@@ -359,16 +359,15 @@ def private is_wasm_object(path : string) : bool {
 }
 
 
-def private build_cross_lib(stem, triple : string; var lines : array<string>) : int {
+def private build_cross_lib(stem, triple, jit_flags : string; var lines : array<string>) : int {
     mkdir_rec(OUTPUT_DIR)
     let bin = get_host_binary()
     return spawn("cd \"{get_das_root()}\" && \"{bin}\" -lib \"{FIXTURE_DIR}/_jit_lib_probe.das\" " +
-        "-output \"{stem}\" -- --jit-target={triple} --jit-static " +
-        "--jit-lib-bindings \"{stem}_c.das\"", lines)
+        "-output \"{stem}\" -- --jit-target={triple} {jit_flags}", lines)
 }
 
 
-[test(description = "a wasm64 -lib build writes one wasm object and a header naming its emcc link, ignores --jit-static and --jit-lib-bindings, and a wasm32 library is refused", timeout = 1200)]
+[test(description = "a wasm64 -lib build under --jit-emit-object writes one wasm object and a header naming its emcc link and links no module, ignores --jit-static and --jit-lib-bindings, and a wasm32 library is refused", timeout = 1200)]
 def test_jit_lib_wasm(tt : T?) {
     if (!jit_enabled()) {
         tt |> success(true, "-lib needs the LLVM backend")
@@ -377,12 +376,14 @@ def test_jit_lib_wasm(tt : T?) {
     tt |> run("a wasm64 library is one wasm object and its header") @(t : T?) {
         let stem = path_join(OUTPUT_DIR, "jit_lib_wasm64")
         var lines : array<string>
-        let rc = build_cross_lib(stem, "wasm64-unknown-emscripten", lines)
+        let rc = build_cross_lib(stem, "wasm64-unknown-emscripten",
+            "--jit-emit-object --jit-static --jit-lib-bindings \"{stem}_c.das\"", lines)
         let output = join(lines, "\n")
         t |> equal(rc, 0, output)
         t |> success(is_wasm_object("{stem}.o"), "{stem}.o is a wasm object:\n{output}")
         t |> success(!fexist(static_artifact(stem)) && !fexist(shared_artifact(stem)),
             "no host archive or shared library is written")
+        t |> success(!fexist("{stem}.mjs") && !fexist("{stem}.wasm"), "no module is linked")
         t |> success(!fexist("{stem}_c.das"), "no dasbind bindings are written")
         t |> success(find(output, "--jit-static ignored") >= 0, output)
         t |> success(find(output, "--jit-lib-bindings names a shared library") >= 0, output)
@@ -393,11 +394,48 @@ def test_jit_lib_wasm(tt : T?) {
     tt |> run("a wasm32 library is refused") @(t : T?) {
         let stem = path_join(OUTPUT_DIR, "jit_lib_wasm32")
         var lines : array<string>
-        let rc = build_cross_lib(stem, "wasm32-unknown-emscripten", lines)
+        let rc = build_cross_lib(stem, "wasm32-unknown-emscripten", "--jit-emit-object", lines)
         let output = join(lines, "\n")
         t |> success(rc != 0, output)
         t |> success(find(output, "64-bit only") >= 0, output)
         t |> success(!fexist("{stem}.o"), "no object is written")
+    }
+}
+
+
+[test(description = "a wasm64 -lib build links an ES module that exports the library's entry points, and exits non-zero when it has no runtime archive to link against", timeout = 1200)]
+def test_jit_lib_wasm_link(tt : T?) {
+    if (!jit_enabled()) {
+        tt |> success(true, "-lib needs the LLVM backend")
+        return
+    }
+    tt |> run("no runtime archive fails the build and links no module") @(t : T?) {
+        let stem = path_join(OUTPUT_DIR, "jit_lib_wasm_norun")
+        var lines : array<string>
+        let rc = build_cross_lib(stem, "wasm64-unknown-emscripten",
+            "--jit-runtime-lib \"{stem}_absent.a\"", lines)
+        let output = join(lines, "\n")
+        t |> success(rc != 0, output)
+        t |> success(find(output, "no wasm64 runtime archive") >= 0, output)
+        t |> success(!fexist("{stem}.mjs") && !fexist("{stem}.h"), "neither a module nor a header is written")
+    }
+    tt |> run("the linked module exports the fixed entry points and the program's") @(t : T?) {
+        let runtime = "{get_das_root()}/web/output64/lib/liblibDaScript_runtime.a"
+        var lines : array<string>
+        if (!fexist(runtime) || spawn("emcc --version", lines) != 0) {
+            t |> success(true, "the link needs a working emcc on PATH and {runtime}")
+            return
+        }
+        let stem = path_join(OUTPUT_DIR, "jit_lib_wasm_link")
+        lines |> clear()
+        let rc = build_cross_lib(stem, "wasm64-unknown-emscripten", "", lines)
+        let output = join(lines, "\n")
+        t |> equal(rc, 0, output)
+        t |> success(is_wasm_object("{stem}.wasm"), "{stem}.wasm is a wasm binary:\n{output}")
+        let loader = fread("{stem}.mjs")
+        for (entry in ["jit_lib_wasm_link_create", "jit_lib_wasm_link_destroy", "tally", "_malloc"]) {
+            t |> success(find(loader, entry) >= 0, "{stem}.mjs names {entry}")
+        }
     }
 }
 
@@ -430,7 +468,8 @@ def test_jit_lib_android(tt : T?) {
     tt |> run("an aarch64 library is one aarch64 object and its header") @(t : T?) {
         let stem = path_join(OUTPUT_DIR, "jit_lib_aarch64")
         var lines : array<string>
-        let rc = build_cross_lib(stem, "aarch64-linux-android", lines)
+        let rc = build_cross_lib(stem, "aarch64-linux-android",
+            "--jit-static --jit-lib-bindings \"{stem}_c.das\"", lines)
         let output = join(lines, "\n")
         t |> equal(rc, 0, output)
         t |> equal(elf_machine("{stem}.o"), ELF_AARCH64, output)
@@ -442,7 +481,7 @@ def test_jit_lib_android(tt : T?) {
     tt |> run("a 32-bit arm library is refused") @(t : T?) {
         let stem = path_join(OUTPUT_DIR, "jit_lib_armv7")
         var lines : array<string>
-        let rc = build_cross_lib(stem, "armv7-linux-androideabi", lines)
+        let rc = build_cross_lib(stem, "armv7-linux-androideabi", "", lines)
         t |> success(rc != 0, join(lines, "\n"))
         t |> success(!fexist("{stem}.o"), "no object is written")
     }
