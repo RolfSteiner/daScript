@@ -81,6 +81,16 @@ injected tune-policy default becomes `fallback` (`jit_cli_opt_level()` in `llvm_
 tune winners are raced under O3 codegen, so an O0 run cannot represent them and must not block
 on the tuner to mint them.
 
+## A library entry runs its jitted function inside one frame of the context stack {#lib-entry-frame}
+
+`jit_lib_invoke_guarded` (`src/builtin/jit_runtime.cpp`) pushes the frame around the call, sized
+to the largest frame in the library (`lib_entry_frame_size`): jitted calls push none of their own,
+and a block made in jitted code puts its argument slot in the frame on top of the stack. The frame
+begins with a `Prologue` that names no function and carries the frame's size, as a compiled
+frame's does. Every walk of the stack - a heap collection, a stack trace - reads a `Prologue` at
+each frame to step to the next one, and a frame whose size reads zero is one the walk never
+leaves.
+
 ## A wasm library goes on from its object to an ES module {#lib-wasm-module}
 
 For a wasm triple `write_cross_lib` (`llvm_jit_common.das`) does not stop at the object:

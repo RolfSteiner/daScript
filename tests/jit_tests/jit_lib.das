@@ -132,6 +132,23 @@ def test_jit_lib_result_slot_is_aligned(t : T?) {
 }
 
 
+[test(description = "a library entry that collects its persistent heap returns, and the strings its global holds survive the collection", timeout = 1200)]
+def test_jit_lib_collects_its_heap(t : T?) {
+    if (!lib_tier_ready(t)) {
+        return
+    }
+    let bin = get_host_binary()
+    var lines : array<string>
+    let rc = build_lib(bin, "{FIXTURE_DIR}/_jit_lib_collect.das", "jit_lib_collect", "", "", lines)
+    report(lines, "build")
+    t |> success(rc == 0, "the collecting fixture builds")
+    var host_lines : array<string>
+    let host_rc = run_host(bin, "_jit_lib_collect_host.das", host_lines)
+    report(host_lines, "host")
+    t |> success(host_rc == 0, "the entry returns from heap_collect with its global's strings intact")
+}
+
+
 [test(description = "a library's export_c comments reach both the C header and the generated daslang bindings, and a daslang host calls it", timeout = 1200)]
 def test_jit_lib_binds_into_a_daslang_host(t : T?) {
     if (!lib_tier_ready(t)) {
