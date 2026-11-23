@@ -979,13 +979,16 @@ def public run_jit(prog : Program?; var ctx : Context?; cli_opts : JitCliOptions
                 mkdir_rec(dir_name(output_path))
                 let lib_kind = (gen_wasm ? JitArtifact.object
                     : (lib_static ? JitArtifact.static_lib : JitArtifact.shared_lib))
+                let lib_names = CNames(prefix = lib_prefix_from_path(output_path), this_module = prog.getThisModule)
                 let written = (lib_kind == JitArtifact.object
-                    ? write_wasm_lib(g_mod, output_path, target_triple, LINK_WHOLE_LIB)
+                    ? write_wasm_lib(g_mod, output_path, target_triple, LINK_WHOLE_LIB,
+                        WasmLibLink(emit_object_only = emit_object, path_to_emcc = path_to_linker,
+                            runtime_lib = runtime_lib_override, linker_string = linker_string,
+                            entry_points <- lib_entry_point_names(lib_names.prefix)))
                     : write_artifact(g_mod, output_path, lib_kind, path_to_shared_lib,
                         path_to_linker, linker_string, LINK_WHOLE_LIB, exe_host_cpu, debug_info,
                         log_jit_time))
                 emit_failed ||= !written
-                let lib_names = CNames(prefix = lib_prefix_from_path(output_path), this_module = prog.getThisModule)
                 let src_name = string(prog.getThisModule.fileName)
                 let header_ok = written && emit_c_header(g_lib_exports, lib_names, src_name,
                     output_path, lib_link_note(lib_kind, LINK_WHOLE_LIB))

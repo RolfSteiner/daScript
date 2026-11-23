@@ -1306,20 +1306,75 @@ def public emit_wasm_object(mod : LLVMOpaqueModule?; obj : string; triple : stri
     return emitted
 }
 
-//! a wasm library is one wasm object at `<out_path>.o`: the emcc
-//! link that consumes it brings the runtime archive, and a host
-//! archiver need not index a wasm object
+//! the emcc flags a wasm64 library object shares with the runtime archive it links against
+def public wasm_lib_abi_flags() : string {
+    let threads = g_target_wasm_threads ? " -pthread" : ""
+    return "-fwasm-exceptions -sWASM_LEGACY_EXCEPTIONS=0 -msimd128 -sMEMORY64=2{threads}"
+}
+
+//! how a wasm library's object becomes a module: `entry_points` are the C symbols JavaScript calls
+struct public WasmLibLink {
+    emit_object_only : bool
+    path_to_emcc : string
+    runtime_lib : string
+    linker_string : string
+    entry_points : array<string>
+}
+
+//! the emcc a wasm link runs: `override_path`, else the one in `<das_root>/bin`, else `emcc` on PATH
+def private find_emcc(override_path : string) : string {
+    return override_path if (!empty(override_path))
+    let bundled = "{get_das_root()}/bin/{get_running_platform_name() == "windows" ? "emcc.bat" : "emcc"}"
+    return stat(bundled).is_valid ? bundled : "emcc"
+}
+
+[arch(at = "../ARCHITECTURE_LIB.md#lib-wasm-module")]
+def private link_wasm_lib(obj, out_path : string; link : WasmLibLink) : bool {
+    let runtime_lib = find_runtime_lib(link.runtime_lib) ?? ""
+    if (empty(runtime_lib)) {
+        to_log(LOG_ERROR, "LLVM LIB: no wasm64 runtime archive to link {out_path}.mjs against - " +
+            "run the web/ emscripten build for web/output64/lib/liblibDaScript_runtime.a, pass " +
+            "--jit-runtime-lib=<path>, or pass --jit-emit-object to write {obj} alone\n")
+        return false
+    }
+    let exported = join([for (name in link.entry_points); "_{name}"], ",")
+    let emcc = ("\"{find_emcc(link.path_to_emcc)}\" \"{obj}\" \"{runtime_lib}\" -o \"{out_path}.mjs\" " +
+        "--no-entry {wasm_lib_abi_flags()} -sMODULARIZE -sEXPORT_ES6 -sDEFAULT_TO_CXX=1 " +
+        "-sINITIAL_MEMORY=128MB -sABORTING_MALLOC=0 -sALLOW_MEMORY_GROWTH=1 " +
+        "-sEXPORTED_FUNCTIONS={exported},_malloc,_free " +
+        "-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAP32,HEAPF32,HEAPF64 " +
+        "{link.linker_string} 2>&1")
+    let cmd = get_running_platform_name() == "windows" ? "\"{emcc}\"" : emcc
+    var output : string
+    let rc = unsafe(popen(cmd) $(f) {
+        if (f != null) {
+            output = fread(f)
+        }
+    })
+    if (rc != 0 || !stat("{out_path}.mjs").is_valid || !stat("{out_path}.wasm").is_valid) {
+        to_log(LOG_ERROR, "LLVM LIB: failed to link {out_path}.mjs, command '{cmd}'\nOutput:\n{output}\n")
+        return false
+    }
+    to_log(LOG_INFO, "LLVM LIB: {out_path}.mjs and {out_path}.wasm linked - ok\n")
+    return true
+}
+
+//! a wasm library is the wasm object `<out_path>.o`, then the ES module emcc links from it;
+//! `--jit-emit-object` stops at the object
 def public write_wasm_lib(mod : LLVMOpaqueModule?; out_path : string; triple : string;
-                          link_whole_lib : bool) : bool {
+                          link_whole_lib : bool; link : WasmLibLink) : bool {
     let obj = artifact_path(out_path, JitArtifact.object)
     return false if (!emit_wasm_object(mod, obj, triple))
     if (link_whole_lib) {
         to_log(LOG_WARNING, "LLVM LIB: {obj} registers a module from the compiler library, " +
             "which the wasm runtime archive does not carry\n")
     }
-    to_log(LOG_INFO, "LLVM LIB: wasm object {obj} written - link it with emcc and the wasm " +
-        "runtime archive ({out_path}.h names the flags)\n")
-    return true
+    if (link.emit_object_only) {
+        to_log(LOG_INFO, "LLVM LIB: --jit-emit-object - wasm object {obj} written and no module " +
+            "linked; link it with emcc and the wasm runtime archive ({out_path}.h names the flags)\n")
+        return true
+    }
+    return link_wasm_lib(obj, out_path, link)
 }
 
 def public write_wasm(mod : LLVMOpaqueModule?; out_path : string; triple : string;

@@ -111,7 +111,7 @@ through a failing gate), `--tune` (forced re-mint), `--tune-only` / `DAS_TUNE_ON
 only the named families; the policy guard arms it itself for a profile's residue),
 `DAS_TUNE_CONTROL` (a supervisor's stop request - tuners abort between families), `--jit-obj-cache=0` (forces every split
 partition to re-emit, bypassing the obj cache), `--jit-lto` (a split `-exe`'s partitions emit
-bitcode and its link runs LTO), `DAS_JIT_PROBE_LTO` (the DLL path's twin: split partitions emit
+bitcode and its link runs LTO), `--jit-emit-object` / `--jit-runtime-lib` / `--jit-linker-string` on a wasm `-lib` (stop at the object, name the runtime archive, append to the emcc link; `ARCHITECTURE_LIB.md#lib-wasm-module`), `DAS_JIT_PROBE_LTO` (the DLL path's twin: split partitions emit
 bitcode and the link runs lld LTO - a dev probe artifact), `DAS_JIT_X64_FORCE_FEATURES` /
 `DAS_JIT_ARM64_FORCE_FEATURES` (force CPU features past detection - emission, the cache keys,
 and `cpu_supports`-based tune eligibility all follow), `DAS_JIT_BASELINE` (build for a CPU class
